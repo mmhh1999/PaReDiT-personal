@@ -4,6 +4,7 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+import pathlib
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -33,6 +34,14 @@ from PIL import Image
 from argparse import Namespace, ArgumentParser
 from const import GAMMA, set_random_seed
 set_random_seed()
+torch.serialization.add_safe_globals([pathlib.PosixPath])
+_original_torch_load = torch.load
+
+def patched_torch_load(*args, **kwargs):
+    kwargs["weights_only"] = False
+    return _original_torch_load(*args, **kwargs)
+
+torch.load = patched_torch_load
 
 def save_image(image, path, colormap=False):
     if torch.is_tensor(image):
@@ -218,6 +227,11 @@ def main():
             metallic += metallic_.reshape(-1,spp,1).mean(1)
             emission += emission_.reshape(-1,spp,3).mean(1)
             slf += slf_.reshape(-1, spp, 3).mean(1)
+            
+            # Clear intermediate variables to free VRAM
+            del positions, normals, triagnle_idxs, valid, mat, albedo_, metallic_, roughness_
+            del kd_, ks_, g0, g1, a_prime_, emission_, non_emit_mask, slf_, du, dv, ds, xs
+            torch.cuda.empty_cache()
 
         L_full = L_full.reshape(*img_hw,-1).cpu()/(SPP//spp)
         L_full = denoiser(L_full.numpy()).numpy()
@@ -277,6 +291,9 @@ def main():
         merge = np.concatenate([L_gt, L_ldr, kd, a_prime, roughness, metallic, emission], axis=1)
         path = dir_out['merge'] / '{:0>5d}_merge.png'.format(i)
         save_image(merge, path)
+        
+        # Clear GPU cache after processing each frame
+        torch.cuda.empty_cache()
 
     print('Mean PSNR: {:.5f}'.format(np.mean(psnr_list)))
     print('Mean SSIM: {:.5f}'.format(np.mean(ssim_list)))

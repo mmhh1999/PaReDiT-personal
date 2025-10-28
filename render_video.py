@@ -4,6 +4,7 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+import pathlib
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -31,6 +32,14 @@ from PIL import Image
 from argparse import Namespace, ArgumentParser
 from const import GAMMA, set_random_seed
 set_random_seed()
+torch.serialization.add_safe_globals([pathlib.PosixPath])
+_original_torch_load = torch.load
+
+def patched_torch_load(*args, **kwargs):
+    kwargs["weights_only"] = False
+    return _original_torch_load(*args, **kwargs)
+
+torch.load = patched_torch_load
 
 def save_image(image, path, colormap=False):
     if torch.is_tensor(image):
@@ -235,6 +244,11 @@ def main():
             roughness += roughness_.reshape(-1,spp,1).mean(1)
             metallic += metallic_.reshape(-1,spp,1).mean(1)
             emission += emission_.reshape(-1,spp,3).mean(1)
+            
+            # Clear intermediate variables to free VRAM
+            del positions, normals, triagnle_idxs, valid, mat, albedo_, metallic_, roughness_
+            del kd_, ks_, g0, g1, a_prime_, emission_, non_emit_mask, du, dv, ds, xs
+            torch.cuda.empty_cache()
 
         L_full = L_full.reshape(*img_hw,-1).cpu()/(SPP//spp)
         L_full = denoiser(L_full.numpy()).numpy()
@@ -270,7 +284,10 @@ def main():
         normalization_factor = 10.0
         emission /= normalization_factor
         path = dir_out['emission'] / '{:0>5d}_emission.png'.format(i)
-        imgs_emission.append(save_image(emission, path)) 
+        imgs_emission.append(save_image(emission, path))
+        
+        # Clear GPU cache after processing each frame
+        torch.cuda.empty_cache()
     
     out_path = Path(args.output_path)
     imgs_full += imgs_full[::-1]

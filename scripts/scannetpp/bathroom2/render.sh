@@ -5,7 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 # data folder
-DATASET_ROOT='/hdd/datasets/scannetpp/'
+DATASET_ROOT='/media/exx/8TB1/ryuan/iris/datas/scannetpp/'
 DATASET='scannetpp'
 # scene name
 SCENE='45b0dac5e3'

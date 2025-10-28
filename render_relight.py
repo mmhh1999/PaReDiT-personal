@@ -5,6 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import math
+import pathlib
 import numpy as np
 import torch
 import torch.nn.functional as NF
@@ -39,6 +40,14 @@ dr.set_flag(dr.JitFlag.VCallRecord, False)
 dr.set_flag(dr.JitFlag.LoopRecord, False)
 from const import GAMMA, SEED, set_random_seed
 set_random_seed()
+torch.serialization.add_safe_globals([pathlib.PosixPath])
+_original_torch_load = torch.load
+
+def patched_torch_load(*args, **kwargs):
+    kwargs["weights_only"] = False
+    return _original_torch_load(*args, **kwargs)
+
+torch.load = patched_torch_load
 
 def save_image(image, path, colormap=False):
     if torch.is_tensor(image):
@@ -296,6 +305,9 @@ def main():
             img = cv2.resize(img, (w_o, h_o), interpolation=cv2.INTER_AREA)
         path = os.path.join(output_path, '{:0>5d}_rgb.png'.format(i))
         imgs.append(save_image(img, path))
+        
+        # Clear GPU cache after processing each frame
+        torch.cuda.empty_cache()
     
     if args.mode == 'traj':
         imgs += imgs[::-1]
