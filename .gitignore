@@ -10,3 +10,4 @@ notebooks/*
 /data/
 lightning_logs/
 *-Copy*
+/dataset/
