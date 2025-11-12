@@ -12,6 +12,69 @@
 </br>
 <a href="https://scholar.google.com/citations?user=jGQeuBUAAAAJ" target="_blank">Tuotuo Li<sup>1</sup></a>, 
 <a href="https://zollhoefer.com/" target="_blank">Michael Zollhöfer<sup>1</sup></a>,
+
+## Exporting aligned glTF / GLB (correct UVs)
+
+When exporting baked textures to a glTF/GLB model, a common pitfall is using an un-flipped UV set while the baking rasterization used a flipped V coordinate. This repository includes helper tools to build a correct, single-file `.glb` from the runtime results (mesh + `vt.npy`/`vt_flipped.npy`, `ft.npy`, and the baked textures).
+
+Quick rules:
+- Use `vt_flipped.npy` if it exists — the bake step often writes both `vt.npy` and `vt_flipped.npy`. `vt_flipped.npy` is usually the one that matches the rasterization convention used during texture generation.
+- `ft.npy` is the face->uv index array; it must be used together with the matching `vt` file.
+
+Recommended commands (from repo root)
+
+1) If you have already run the exporter and have `outputs/<exp>/export_optimized/`:
+
+```bash
+# pick flipped vt if present, otherwise fall back to vt.npy
+VT=outputs/fipt_real_classroom/export_optimized/vt_flipped.npy
+if [ ! -f "$VT" ]; then VT=outputs/fipt_real_classroom/export_optimized/vt.npy; fi
+
+python tools/generate_gltf_from_results.py \
+        --mesh data/fipt/real/classroom/scene.obj \
+        --vt "$VT" \
+        --ft outputs/fipt_real_classroom/export_optimized/ft.npy \
+        --textures-dir outputs/fipt_real_classroom/export_optimized \
+        --out outputs/fipt_real_classroom/gltf_final
+
+# pack into a single .glb
+python tools/gltf_to_glb.py \
+        --gltf outputs/fipt_real_classroom/gltf_final/model.gltf \
+        --out outputs/fipt_real_classroom/gltf_final/model.glb
+```
+
+2) If you need to re-run the full bake/unwrap then export the GLB:
+
+```bash
+# 1) generate UVs + bake textures
+python export_materials_optimized.py \
+        --mesh data/fipt/real/classroom/scene.obj \
+        --dir_save outputs/fipt_real_classroom/export_optimized \
+        --tex_res 2048
+
+# 2) export and pack (same as above)
+# (the generate+pack commands from step 1)
+```
+
+Verification (quick load test with trimesh):
+
+```bash
+python - <<'PY'
+import os
+import trimesh
+p = 'outputs/fipt_real_classroom/gltf_final/model.glb'
+print('exists:', os.path.exists(p))
+if os.path.exists(p):
+                s = trimesh.load(p, force='scene')
+                print('geometry keys:', list(getattr(s,'geometry',{}).keys()))
+                mesh = list(getattr(s,'geometry',{}).values())[0]
+                print('vertices/faces:', mesh.vertices.shape, mesh.faces.shape)
+PY
+```
+
+If the textures look misaligned in your viewer, try regenerating using `vt_flipped.npy` (or flip the V channel in `vt.npy` with `vt[:,1] = 1.0 - vt[:,1]`) and re-run the export.
+
+If you want, the tools can be updated to prefer `vt_flipped.npy` automatically — see `tools/generate_gltf_from_results.py` and `tools/gltf_to_glb.py`.
 <a href="https://johanneskopf.de/" target="_blank">Johannes Kopf<sup>1</sup></a>,
 <a href="https://shenlong.web.illinois.edu/" target="_blank">Shenlong Wang<sup>2</sup></a>,  
 <a href="https://changilkim.com" target="_blank">Changil Kim<sup>1</sup></a></p>
